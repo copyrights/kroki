@@ -14,8 +14,9 @@ target "kroki" {
     dbml = "./dbml"
     wavedrom = "./wavedrom"
     bytefield = "./bytefield"
+    kroki-src = "."
   }
-  dockerfile = "ops/docker/jdk11-alpine/Dockerfile"
+  dockerfile = "ops/docker/jdk11-jammy/Dockerfile"
   tags = ["yuzutech/kroki:${TAG}"]
 }
 

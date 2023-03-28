@@ -11,14 +11,16 @@ Applies to `blockdiag`, `seqdiag`, `actdiag`, `nwdiag`, `packetdiag` and `rackdi
 |Description
 
 |antialias
-|_boolean_ +
-`true`, *`false`*
-|Pass diagram image to anti-alias filter
+|_flag_ +
+empty string ("")
+|Apply anti-alias filter to diagram image +
+With flag set, option takes effect.
 
 |no-transparency
-|_boolean_ +
-*`true`*, `false`
-|Do not make transparent background of diagram (PNG only)
+|_flag_ +
+empty string ("")
+|Disable transparent background of diagram (PNG only) +
+With flag set, option takes effect.
 
 |size
 |_dimension format \{width}x\{height}_ +
@@ -26,9 +28,10 @@ ex. `320x240`
 |Size of diagram
 
 |no-doctype
-|_boolean_ +
-`true`, *`false`*
-|Do not output doctype definition tags (SVG only)
+|_flag_ +
+empty string ("")
+|Omit doctype definition tag (SVG only) +
+With flag set, option takes effect.
 |===
 
 == D2
@@ -42,7 +45,7 @@ ex. `320x240`
 |theme
 |
 * `default` (`0`)
-* `neutral-grey` (`2`)
+* `neutral-grey` (`1`)
 * `flagship-terrastruct` (`3`)
 * `cool-classics` (`4`)
 * `mixed-berry-blue` (`5`)
@@ -83,7 +86,7 @@ ex. `320x240`
 |Set a default edge attribute: https://graphviz.org/doc/info/command.html#-E
 
 |layout
-|
+|_string_ +
 *`dot`* +
 `neato` +
 `fdp` +
@@ -122,62 +125,6 @@ For security reasons, the following options are not available:
 ====
 
 The complete list of options is available in Mermaid source code at: https://github.com/mermaid-js/mermaid/blob/master/packages/mermaid/src/config.type.ts
-
-== Structurizr
-
-[cols="1m,1a,2a",opts="header"]
-|===
-|Name
-|Allowable Values
-|Description
-
-|view-key
-|_string_
-|Key of the view (if the workspace contains more than one view)
-
-|===
-
-== Svgbob
-
-[cols="1m,1a,2a",opts="header"]
-|===
-|Name
-|Allowable Values
-|Description
-
-|background
-|_any_ +
-*`white`*
-|Backdrop background will be filled with this color
-
-|font-family
-|_any_ +
-*`arial`*
-|Text will be rendered with this font
-
-|font-size
-|_integer_ +
-*`14`*
-|Text will be rendered with this font size
-
-|fill-color
-|_any_ +
-*`black`*
-|Solid shapes will be filled with this color
-
-|scale
-|_any_ +
-*`1`*
-|Scale the entire svg (dimensions, font size, stroke width) by this factor
-
-|stroke-width
-|_any_ +
-*`2`*
-|Stroke width for all lines
-
-|===
-
-
 
 == PlantUML
 
