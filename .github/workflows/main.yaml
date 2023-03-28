@@ -30,12 +30,12 @@ jobs:
         extra-args: |
           --ulimit="nofile=65535:65535"
           --runtime runc
-          --build-context nomnoml="./nomnoml"
-          --build-context vega="./vega"
-          --build-context dbml="./dbml"
-          --build-context wavedrom="./wavedrom"
-          --build-context bytefield="./bytefield"
-          --build-context kroki-src="."
+          --build-context nomnoml=./nomnoml
+          --build-context vega=./vega
+          --build-context dbml=./dbml
+          --build-context wavedrom=./wavedrom
+          --build-context bytefield=./bytefield
+          --build-context kroki-src=.
     - name: 'Setup Node.js 16'
       uses: actions/setup-node@v3
       with:
