@@ -1,9 +1,9 @@
-FROM python:3.11.0-alpine3.16
+FROM python:3.11.4-alpine3.18
 
 RUN addgroup -g 1000 kroki && adduser -D -G kroki -u 1000 kroki
 
 # add runtime dependency
-RUN apk --update --no-cache add graphviz
+RUN apk --update --no-cache add graphviz ttf-liberation && fc-cache -f
 
 # ENV LIBRARY_PATH=/lib:/usr/lib
 

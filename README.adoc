@@ -4,12 +4,11 @@
 :uri-maven: https://maven.apache.org/
 
 ifdef::env-github[]
-image:https://travis-ci.org/yuzutech/kroki.svg?branch=master[Travis build status, link=https://travis-ci.org/yuzutech/kroki]
 image:https://github.com/yuzutech/kroki/workflows/CI/badge.svg?branch=master[GitHub Actions build status, link=https://github.com/yuzutech/kroki/actions]
 image:https://img.shields.io/badge/zulip-join_chat-brightgreen.svg[Zulip chat, link=https://kroki.zulipchat.com/]
 endif::[]
 
-{uri-kroki}[Kroki] provides a unified API with support for BlockDiag (BlockDiag, SeqDiag, ActDiag, NwDiag, PacketDiag, RackDiag), BPMN, Bytefield, C4 (with PlantUML), D2, DBML, Diagrams.net (experimental), Ditaa, Erd, Excalidraw, GraphViz, Mermaid, Nomnoml, Pikchr, PlantUML, SvgBob, UMLet, Vega, Vega-Lite, WaveDrom and WireViz... and more to come!
+{uri-kroki}[Kroki] provides a unified API with support for BlockDiag (BlockDiag, SeqDiag, ActDiag, NwDiag, PacketDiag, RackDiag), BPMN, Bytefield, C4 (with PlantUML), D2, DBML, Diagrams.net (experimental), Ditaa, Erd, Excalidraw, GraphViz, Mermaid, Nomnoml, Pikchr, PlantUML, SvgBob, Symbolator, UMLet, Vega, Vega-Lite, WaveDrom and WireViz... and more to come!
 
 == Quickstart
 
@@ -88,9 +87,6 @@ A Node.js CLI on top of the _Nomnoml_ diagram library.
 vega::
 A Node.js CLI on top of the _vega_ diagram library. Also supports Vega-Lite concise grammar.
 
-blockdiag::
-A companion web server written in Python (powered by _Flask_ and _Gunicorn_) that provides _BlockDiag_, _SeqDiag_, _ActDiag_, _NwDiag_, _PacketDiag_ and _RackDiag_ diagrams libraries.
-
 mermaid::
 A companion web server written in JavaScript (powered by _micro_) that provides _Mermaid_ diagram library.
 
@@ -116,11 +112,7 @@ A companion web server written in Python (powered by _Flask_ and _Gunicorn_) tha
 
 === Gateway Server
 
-The first step is to install the local dependencies in your local repository using `make`:
-
- $ make installLocalDependencies
-
-Then you can build the project using Maven:
+The first step is to build the project using Maven:
 
  $ make buildServer
 
@@ -141,9 +133,6 @@ Once the Docker images are built, you can run Kroki using `docker`:
 === Companion Containers
 
 If you want to use one of the following diagram libraries then you will also need to start the corresponding companion container:
-
-yuzutech/kroki-blockdiag::
-BlockDiag, ActDiag, NwDiag, SeqDiag, PacketDiag, RackDiag
 
 yuzutech/kroki-mermaid::
 Mermaid
@@ -170,17 +159,12 @@ services:
   core:
     image: yuzutech/kroki
     environment:
-      - KROKI_BLOCKDIAG_HOST=blockdiag
       - KROKI_MERMAID_HOST=mermaid
       - KROKI_BPMN_HOST=bpmn
       - KROKI_EXCALIDRAW_HOST=excalidraw
       - KROKI_WIREVIZ_HOST=wireviz
     ports:
       - "8000:8000"
-  blockdiag:
-    image: yuzutech/kroki-blockdiag
-    expose:
-      - "8001"
   mermaid:
     image: yuzutech/kroki-mermaid
     expose:

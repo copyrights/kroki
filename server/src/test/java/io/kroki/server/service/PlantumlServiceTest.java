@@ -1,11 +1,21 @@
 package io.kroki.server.service;
 
+import io.kroki.server.DownloadPlantumlNativeImage;
 import io.kroki.server.action.DitaaContext;
 import io.kroki.server.error.BadRequestException;
 import io.kroki.server.format.FileFormat;
 import io.kroki.server.security.SafeMode;
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
+import io.vertx.junit5.Checkpoint;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -14,10 +24,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,33 +32,43 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(VertxExtension.class)
+@EnabledOnOs(value = OS.LINUX, architectures = "amd64")
 public class PlantumlServiceTest {
+
+  private static PlantumlCommand plantumlCommand = null;
+
+  @BeforeAll
+  @Timeout(60)
+  static void prepare(VertxTestContext context, Vertx vertx) throws InterruptedException {
+    Checkpoint checkpoint = context.checkpoint();
+    DownloadPlantumlNativeImage.download(vertx).onComplete(event -> {
+      if (event.failed()) {
+        context.failNow(event.cause());
+        return;
+      }
+      plantumlCommand = event.result();
+      checkpoint.flag();
+    });
+  }
 
   @Test
   void should_return_a_syntax_error_exception() {
     String diagram = "@startuml\nBob\\->Alice hello\n@enduml";
-    assertThatThrownBy(() -> Plantuml.convert(diagram, FileFormat.SVG, new JsonObject()))
+    assertThatThrownBy(() -> plantumlCommand.convert(diagram, FileFormat.SVG, new JsonObject()))
       .isInstanceOf(BadRequestException.class)
       .hasMessageStartingWith("Syntax Error? (line: 1)");
   }
 
   @Test
-  void should_return_an_empty_diagram_exception() {
-    String diagram = "Bob->Alice:hello";
-    assertThatThrownBy(() -> Plantuml.convert(diagram, FileFormat.SVG, new JsonObject()))
-      .isInstanceOf(BadRequestException.class)
-      .hasMessageStartingWith("Empty diagram, missing delimiters?");
-  }
-
-  @Test
-  void should_return_a_diagram() {
+  void should_return_a_diagram() throws IOException, InterruptedException {
     String diagram = "@startuml\nBob->Alice:hello\n@enduml";
-    byte[] convert = Plantuml.convert(diagram, FileFormat.SVG, new JsonObject());
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.SVG, new JsonObject());
     assertThat(convert).isNotEmpty();
   }
 
   @Test
-  void should_preserve_archimate_stdlib_include() throws IOException {
+  void should_preserve_archimate_stdlib_include() throws IOException, InterruptedException {
     String diagram = "@startuml\n" +
       "!include <archimate/Archimate>\n" +
       "\n" +
@@ -87,12 +104,12 @@ public class PlantumlServiceTest {
       "Rel_Access_Up(webServer, inMemoryItem, \"\")\n" +
       "Rel_Serving_Up(webServer, internetBrowser, \"\")\n" +
       "@enduml";
-    byte[] convert = Plantuml.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
+    byte[] convert = plantumlCommand.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
     assertThat(convert).isNotEmpty();
   }
 
   @Test
-  void should_preserve_elastic_stdlib_include() throws IOException {
+  void should_preserve_elastic_stdlib_include() throws IOException, InterruptedException {
     String diagram = "@startuml\n" +
       "!include <elastic/common>\n" +
       "!include <elastic/elasticsearch/elasticsearch>\n" +
@@ -106,12 +123,12 @@ public class PlantumlServiceTest {
       "Logstash -right-> ElasticSearch: Transformed Data\n" +
       "ElasticSearch -right-> Kibana: Data to View\n" +
       "@enduml";
-    byte[] convert = Plantuml.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
+    byte[] convert = plantumlCommand.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
     assertThat(convert).isNotEmpty();
   }
 
   @Test
-  void should_preserve_logos_stdlib_include() throws IOException {
+  void should_preserve_logos_stdlib_include() throws IOException, InterruptedException {
     String diagram = "@startuml\n" +
       "!include <logos/kafka>\n" +
       "!include <logos/cassandra>\n" +
@@ -131,12 +148,12 @@ public class PlantumlServiceTest {
       "kafka -> daemon\n" +
       "daemon --> cassandra\n" +
       "@enduml";
-    byte[] convert = Plantuml.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
+    byte[] convert = plantumlCommand.convert(Plantuml.sanitize(diagram, SafeMode.SAFE), FileFormat.SVG, new JsonObject());
     assertThat(convert).isNotEmpty();
   }
 
   @Test
-  void should_preserve_stdlib_include() throws IOException {
+  void should_preserve_stdlib_include() throws IOException, InterruptedException {
     String diagram = "@startuml\n" +
       "!include <azure/AzureRaw>\n" +
       "!include <azure/Databases/AzureCosmosDb>\n" +
@@ -150,7 +167,7 @@ public class PlantumlServiceTest {
       "myFunction --> myCosmosDb\n" +
       "mySecondFunction --> mySecondCosmosDb\n" +
       "@enduml";
-    byte[] convert = Plantuml.convert(Plantuml.sanitize(diagram, SafeMode.SECURE), FileFormat.SVG, new JsonObject());
+    byte[] convert = plantumlCommand.convert(Plantuml.sanitize(diagram, SafeMode.SECURE), FileFormat.SVG, new JsonObject());
     assertThat(convert).isNotEmpty();
   }
 
@@ -309,14 +326,14 @@ public class PlantumlServiceTest {
     String diagram = "@startuml\n" +
       "!include /etc/password\n" +
       "@enduml";
-    assertThatThrownBy(() -> Plantuml.convert(diagram, FileFormat.SVG, new JsonObject()))
+    assertThatThrownBy(() -> plantumlCommand.convert(diagram, FileFormat.SVG, new JsonObject()))
       .hasMessage("cannot include /etc/password (line: 1)");
   }
 
   @Test
-  void should_return_an_ascii_text_diagram() {
+  void should_return_an_ascii_text_diagram() throws IOException, InterruptedException {
     String diagram = "@startuml\nBob->Alice:hello\n@enduml";
-    byte[] convert = Plantuml.convert(diagram, FileFormat.TXT, new JsonObject());
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.TXT, new JsonObject());
     //@formatter:off
     assertThat(new String(convert)).isEqualTo(
       "     ,---.          ,-----.\n" +
@@ -331,9 +348,9 @@ public class PlantumlServiceTest {
   }
 
   @Test
-  void should_return_an_unicode_text_diagram() {
+  void should_return_an_unicode_text_diagram() throws IOException, InterruptedException {
     String diagram = "@startuml\nBob->Alice:hello\n@enduml";
-    byte[] convert = Plantuml.convert(diagram, FileFormat.UTXT, new JsonObject());
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.UTXT, new JsonObject());
     //@formatter:off
     assertThat(new String(convert)).isEqualTo(
       "     ┌───┐          ┌─────┐\n" +
@@ -656,17 +673,40 @@ public class PlantumlServiceTest {
   }
 
   @Test
-  void should_use_specified_theme() throws IOException {
+  void should_use_specified_theme() throws IOException, InterruptedException {
     String diagram = "@startuml\nBob->Alice:hello\n@enduml";
     JsonObject options = new JsonObject();
     options.put("theme", "minty");
-    byte[] convert = Plantuml.convert(diagram, FileFormat.SVG, options);
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.SVG, options);
     String osName = System.getProperty("os.name").toLowerCase();
     String expectedFileName = "./plantuml_with_minty_theme.svg";
     if (osName.contains("mac")) {
       expectedFileName = "./plantuml_with_minty_theme_macos.svg";
     }
     assertThat(stripComments(new String(convert))).isEqualTo(read(expectedFileName));
+  }
+
+  @Test
+  void should_include_awslib() throws IOException, InterruptedException {
+    String diagram = "!include <awslib/AWSCommon>\n" +
+            "!include <awslib/Groups/all.puml>\n" +
+            "\n" +
+            "AWSAccountGroup(externalAccount, \"AWS account external\") {\n" +
+            "\n" +
+            "}";
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.SVG, new JsonObject());
+    assertThat(new String(convert)).contains("xlink:href=\"data:image/png;base64,");
+  }
+
+  @Test
+  void should_include_openiconic() throws IOException, InterruptedException {
+    String diagram = "listopeniconic";
+    byte[] convert = plantumlCommand.convert(diagram, FileFormat.SVG, new JsonObject());
+    System.out.println(new String(convert));
+    Pattern pattern = Pattern.compile("<path d=");
+    String output = new String(convert);
+    int countOccurrences= (output.length() - output.replace("<path d=\"", "").length()) / "<path d=\"".length();
+    assertThat(countOccurrences).isEqualTo(223); // 223 icons
   }
 
   private String read(String name) throws IOException {

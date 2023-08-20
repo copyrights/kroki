@@ -18,7 +18,7 @@ import java.util.List;
 
 public class Graphviz implements DiagramService {
 
-  private static final List<FileFormat> SUPPORTED_FORMATS = Arrays.asList(FileFormat.PNG, FileFormat.SVG, FileFormat.JPEG);
+  private static final List<FileFormat> SUPPORTED_FORMATS = Arrays.asList(FileFormat.PNG, FileFormat.SVG, FileFormat.JPEG, FileFormat.PDF);
 
   private final Vertx vertx;
   private final String binPath;
@@ -49,7 +49,7 @@ public class Graphviz implements DiagramService {
 
   @Override
   public String getVersion() {
-    return "3.0.0";
+    return "8.0.5";
   }
 
   @Override

@@ -4,9 +4,10 @@
   "description": "A micro server built on top of the Mermaid diagram library.",
   "main": "src/index.js",
   "bin": "src/index.js",
+  "type": "module",
   "scripts": {
-    "prestart": "cp node_modules/mermaid/dist/mermaid.min.js assets/mermaid.min.js",
-    "start": "DEBUG=puppeteer:* LEVEL=debug node src/index.js",
+    "prestart": "rm -rf assets/mermaid/* && cp -r node_modules/mermaid/dist/*.mjs node_modules/mermaid/dist/*.js assets/mermaid/",
+    "start": "node src/index.js",
     "test": "node test/run.js",
     "lint": "standard src/**.js"
   },
@@ -18,18 +19,22 @@
     "url": "https://github.com/yuzutech/kroki.git"
   },
   "dependencies": {
-    "lodash": "^4.17.21",
-    "micro": "9.4.1",
-    "pino": "8.8.0",
+    "elastic-apm-node": "3.49.1",
+    "lodash": "4.17.21",
+    "micro": "10.0.1",
+    "pino": "8.15.0",
     "pino-debug": "2.0.0",
-    "puppeteer": "14.4.1"
+    "puppeteer": "20.6.0"
   },
   "devDependencies": {
     "chai": "4.3.7",
-    "dirty-chai": "^2.0.1",
-    "mermaid": "9.3.0",
+    "dirty-chai": "2.0.1",
+    "mermaid": "10.3.1",
     "mocha": "10.2.0",
-    "pngjs": "^6.0.0",
-    "standard": "17.0.0"
+    "pngjs": "7.0.0",
+    "standard": "17.1.0"
+  },
+  "volta": {
+    "node": "18.17.1"
   }
 }

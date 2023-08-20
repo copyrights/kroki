@@ -29,7 +29,7 @@ public class D2 implements DiagramService {
 
   private final Map<String, Integer> builtinThemes = Map.ofEntries(
     entry("default", 0),
-    entry("neutral-grey", 2),
+    entry("neutral-gray", 1),
     entry("flagship-terrastruct", 3),
     entry("cool-classics", 4),
     entry("mixed-berry-blue", 5),
@@ -41,7 +41,10 @@ public class D2 implements DiagramService {
     entry("shirley-temple", 102),
     entry("earth-tones", 103),
     entry("everglade-green", 104),
-    entry("buttered-toast", 105)
+    entry("buttered-toast", 105),
+    entry("dark-mauve", 200),
+    entry("terminal", 300),
+    entry("terminal-grayscale", 301)
   );
 
   public D2(Vertx vertx, JsonObject config, Commander commander) {
@@ -68,7 +71,7 @@ public class D2 implements DiagramService {
 
   @Override
   public String getVersion() {
-    return "0.1.5";
+    return "0.5.1";
   }
 
   @Override
@@ -86,20 +89,29 @@ public class D2 implements DiagramService {
   private byte[] d2(byte[] source, JsonObject options) throws IOException, InterruptedException, IllegalStateException {
     List<String> commands = new ArrayList<>();
     commands.add(binPath);
-    String value = options.getString("theme");
-    if (value != null) {
+    String theme = options.getString("theme");
+    if (theme != null) {
       int themeId = 0;
-      Integer builtinThemeId = builtinThemes.get(value.toLowerCase().replaceAll("\\s", "-"));
+      Integer builtinThemeId = builtinThemes.get(theme.toLowerCase().replaceAll("\\s", "-"));
       if (builtinThemeId != null) {
         themeId = builtinThemeId;
       } else {
         try {
-          themeId = Integer.parseInt(value, 10);
+          themeId = Integer.parseInt(theme, 10);
         } catch (NumberFormatException e) {
           // ignore, fallback to 0
         }
       }
       commands.add("--theme=" + themeId);
+    }
+    String layout = options.getString("layout");
+    if (layout != null && layout.equals("elk")) {
+      // Only pass the layout argument if the ELK layout engine is requested (default is 'dagre')
+      commands.add("--layout=" + layout);
+    }
+    String sketch = options.getString("sketch");
+    if (sketch != null) {
+      commands.add("--sketch");
     }
     commands.add("-"); // read from stdin
     return commander.execute(source, commands.toArray(new String[0]));

@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import { promises as fs } from 'fs'
-import * as url from 'url'
-import ospath from 'path'
+import { promises as fs } from 'node:fs'
+import * as url from 'node:url'
+import ospath from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 
-const KROKI_ALPINE_VERSION = '3.16'
 const require = createRequire(import.meta.url)
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url))
 const rootDir = ospath.join(__dirname, '..', '..')
@@ -14,14 +13,14 @@ const krokiServicePath = ospath.join(rootDir, 'server', 'src', 'main', 'java', '
 
 const diagramLibraryVersions = {}
 
-function getDependencyVersion (pkg, name) {
+function getDependencyVersion(pkg, name) {
   if (name in pkg.dependencies) {
     return pkg.dependencies[name]
   }
   return pkg.devDependencies[name]
 }
 
-async function updateServiceGetVersion (javaServiceFileName, version) {
+async function updateServiceGetVersion(javaServiceFileName, version) {
   const servicePath = ospath.join(krokiServicePath, javaServiceFileName)
   const javaContent = await fs.readFile(servicePath, 'utf8')
   const versionFound = javaContent.match(/(?<= +public String getVersion\(\) {\n\s+return ")(?<version>[0-9.]+)(?=";\n\s+})/)
@@ -34,7 +33,7 @@ async function updateServiceGetVersion (javaServiceFileName, version) {
   }
 }
 
-async function updateVegaServiceGetVersion (vegaVersion, vegaLiteVersion) {
+async function updateVegaServiceGetVersion(vegaVersion, vegaLiteVersion) {
   // update vega version
   const servicePath = ospath.join(krokiServicePath, 'Vega.java')
   let javaContent = await fs.readFile(servicePath, 'utf8')
@@ -56,7 +55,7 @@ async function updateVegaServiceGetVersion (vegaVersion, vegaLiteVersion) {
   await fs.writeFile(servicePath, javaContent, 'utf8')
 }
 
-async function mvnEvaluateExpression (expression, pomRootRelativePath) {
+async function mvnEvaluateExpression(expression, pomRootRelativePath) {
   if (pomRootRelativePath === undefined) {
     pomRootRelativePath = ospath.join('server', 'pom.xml')
   }
@@ -83,7 +82,7 @@ async function mvnEvaluateExpression (expression, pomRootRelativePath) {
   })
 }
 
-function addDiagramLibraryPackageVersion (diagramName, dependencyName, directoryName) {
+function addDiagramLibraryPackageVersion(diagramName, dependencyName, directoryName) {
   if (directoryName === undefined) {
     directoryName = diagramName
   }
@@ -118,6 +117,7 @@ const diagramLibraryNames = [
   'seqdiag',
   'structurizr',
   'svgbob',
+  'symbolator',
   'umlet',
   'vega',
   'vegalite',
@@ -126,18 +126,12 @@ const diagramLibraryNames = [
 ]
 
 try {
-  // GET CURRENT VERSION
-  const blockdiagRequirementsContent = await fs.readFile(ospath.join(rootDir, 'blockdiag', 'requirements.txt'), 'utf8')
-  for (const line of blockdiagRequirementsContent.split('\n')) {
+  const wirevizRequirementsContent = await fs.readFile(ospath.join(rootDir, 'wireviz', 'requirements.txt'), 'utf8')
+  for (const line of wirevizRequirementsContent.split('\n')) {
     const found = line.match(/^(?<name>[a-zA-Z]+)==(?<version>.*)$/)
     if (found) {
       const { name, version } = found.groups
       if (diagramLibraryNames.includes(name)) {
-        if (name === 'nwdiag') {
-          // this package also includes rackdiag and packetdiag
-          diagramLibraryVersions.rackdiag = version
-          diagramLibraryVersions.packetdiag = version
-        }
         diagramLibraryVersions[name] = version
       }
     }
@@ -146,7 +140,7 @@ try {
   addDiagramLibraryPackageVersion('bpmn', 'bpmn-js')
   addDiagramLibraryPackageVersion('bytefield', 'bytefield-svg')
   addDiagramLibraryPackageVersion('dbml', '@softwaretechnik/dbml-renderer')
-  addDiagramLibraryPackageVersion('excalidraw', '@excalidraw/utils')
+  addDiagramLibraryPackageVersion('excalidraw', '@excalidraw/excalidraw')
   addDiagramLibraryPackageVersion('mermaid')
   addDiagramLibraryPackageVersion('nomnoml')
   addDiagramLibraryPackageVersion('vega')
@@ -159,9 +153,14 @@ try {
     diagramLibraryVersions.diagramsnet = [...diagramsnetVersionFound][0].groups.version
   }
 
-  const dockerfileContent = await fs.readFile(ospath.join(rootDir, 'server', 'ops', 'docker', 'jdk11-alpine', 'Dockerfile'), 'utf8')
+  const dockerfileContent = await fs.readFile(ospath.join(rootDir, 'server', 'ops', 'docker', 'jdk11-jammy', 'Dockerfile'), 'utf8')
   for (const line of dockerfileContent.split('\n')) {
-    const erdVersionFound = line.match(/^FROM yuzutech\/kroki-builder-erd:(?<version>\S+) as kroki-builder-static-erd$/)
+    const d2VersionFound = line.match(/^ARG D2_VERSION="(?<version>.+)"$/)
+    if (d2VersionFound) {
+      const { version } = d2VersionFound.groups
+      diagramLibraryVersions.d2 = version
+    }
+    const erdVersionFound = line.match(/^FROM yuzutech\/kroki-builder-erd:(?<version>\S+) AS kroki-builder-static-erd$/)
     if (erdVersionFound) {
       const { version } = erdVersionFound.groups
       diagramLibraryVersions.erd = version
@@ -171,10 +170,44 @@ try {
       const { version } = pikchrVersionFound.groups
       diagramLibraryVersions.pikchr = version.slice(0, 10)
     }
-    const d2VersionFound = line.match(/^ARG D2_VERSION=(?<version>.+)$/)
-    if (d2VersionFound) {
-      const { version } = d2VersionFound.groups
-      diagramLibraryVersions.d2 = version
+
+    const symbolatorVersionFound = line.match(/^ARG SYMBOLATOR_VERSION=(?<version>.+)$/)
+    if (symbolatorVersionFound) {
+      const { version } = symbolatorVersionFound.groups
+      diagramLibraryVersions.symbolator = version
+    }
+    const umletVersionFound = line.match(/^ARG UMLET_VERSION="(?<version>.+)"$/)
+    if (umletVersionFound) {
+      const { version } = umletVersionFound.groups
+      // format: YYYY-mm-dd_UMLet_v0.0
+      diagramLibraryVersions.umlet = version.split('_')[2].substring(1)
+    }
+    const plantumlVersionFound = line.match(/^ARG PLANTUML_VERSION="(?<version>.+)"$/)
+    if (plantumlVersionFound) {
+      const { version } = plantumlVersionFound.groups
+      diagramLibraryVersions.plantuml = version
+      diagramLibraryVersions.c4plantuml = version
+    }
+    const graphvizVersionFound = line.match(/^ARG GRAPHVIZ_VERSION="(?<version>.+)"$/)
+    if (graphvizVersionFound) {
+      const { version } = graphvizVersionFound.groups
+      diagramLibraryVersions.graphviz = version
+    }
+    const ditaaVersionFound = line.match(/^ARG DITAA_VERSION="(?<version>.+)"$/)
+    if (ditaaVersionFound) {
+      const { version } = ditaaVersionFound.groups
+      diagramLibraryVersions.ditaa = version
+    }
+    const blockdiagVersionFound = line.match(/^ARG BLOCKDIAG_VERSION="(?<version>.+)"$/)
+    if (blockdiagVersionFound) {
+      const { version } = blockdiagVersionFound.groups
+      diagramLibraryVersions.blockdiag = version
+      diagramLibraryVersions.actdiag = version
+      diagramLibraryVersions.seqdiag = version
+      diagramLibraryVersions.rackdiag = version
+      diagramLibraryVersions.packetdiag = version
+      diagramLibraryVersions.nwdiag = version
+      diagramLibraryVersions.nwdiag = version
     }
   }
 
@@ -187,32 +220,8 @@ try {
     }
   }
 
-  const { value: plantumlVersion } = await mvnEvaluateExpression('plantuml.version')
-  diagramLibraryVersions.plantuml = plantumlVersion
-
   const { value: structurizrVersion } = await mvnEvaluateExpression('structurizr-dsl.version')
   diagramLibraryVersions.structurizr = structurizrVersion
-
-  const { value: ditaaVersion } = await mvnEvaluateExpression('ditaa-mini.version')
-  diagramLibraryVersions.ditaa = ditaaVersion
-
-  const { value: umletVersion } = await mvnEvaluateExpression('umlet-mini.version', ospath.join('umlet', 'pom.xml'))
-  diagramLibraryVersions.umlet = umletVersion
-
-  // GraphViz version
-  const alpinePackagesUrl = `https://dl-cdn.alpinelinux.org/alpine/v${KROKI_ALPINE_VERSION}/main/x86_64/`
-  const alpinePackagesResponse = await fetch(alpinePackagesUrl)
-  if (alpinePackagesResponse.status >= 200 && alpinePackagesResponse.status < 400) {
-    const alpinePackagesContent = await alpinePackagesResponse.text()
-    const found = alpinePackagesContent.match(/<a href="graphviz-(?<version>[0-9.]+)-r[0-9]+\.apk.*/)
-    if (found) {
-      const { version } = found.groups
-      diagramLibraryVersions.graphviz = version
-    }
-  } else {
-    console.error(`Unable to GET ${alpinePackagesUrl} - ${alpinePackagesResponse.status} ${alpinePackagesResponse.statusText} - ${await alpinePackagesResponse.text()}`)
-    process.exit(1)
-  }
 
   console.log({
     diagramLibraryVersions: Object.fromEntries(Object.entries(diagramLibraryVersions).sort((a, b) => a[0].localeCompare(b[0]))),
@@ -224,12 +233,12 @@ try {
   const antoraComponentPath = ospath.join(rootDir, 'docs', 'antora.yml')
   const antoraComponentContent = await fs.readFile(antoraComponentPath, 'utf8')
   for (let line of antoraComponentContent.split('\n')) {
-    const found = line.match(/^\s+(?<name>[a-z]+)-version: '?(?<version>[^']+)'?$/)
+    const found = line.match(/^\s+(?<name>[a-z0-9]+)-version: '?(?<version>[^']+)'?$/)
     if (found) {
-      const { name, version : versionFound } = found.groups
+      const { name, version: versionFound } = found.groups
       const version = diagramLibraryVersions[name]
       if (versionFound !== version) {
-        line = line.replace(/(?<=^\s+(?<name>[a-z]+)-version: '?)(?<version>[^']+)/, version)
+        line = line.replace(/(?<=^\s+(?<name>[a-z0-9]+)-version: '?)(?<version>[^']+)/, version)
       }
     }
     antoraComponentLines.push(line)
@@ -247,11 +256,13 @@ try {
   await updateServiceGetVersion('Mermaid.java', diagramLibraryVersions.mermaid)
   await updateServiceGetVersion('Nomnoml.java', diagramLibraryVersions.nomnoml)
   await updateServiceGetVersion('Pikchr.java', diagramLibraryVersions.pikchr)
+  await updateServiceGetVersion('Plantuml.java', diagramLibraryVersions.plantuml)
   await updateServiceGetVersion('Structurizr.java', diagramLibraryVersions.structurizr)
   await updateServiceGetVersion('Svgbob.java', diagramLibraryVersions.svgbob)
+  await updateServiceGetVersion('Symbolator.java', diagramLibraryVersions.symbolator)
   await updateServiceGetVersion('Umlet.java', diagramLibraryVersions.umlet)
   await updateServiceGetVersion('Wavedrom.java', diagramLibraryVersions.wavedrom)
-  await updateServiceGetVersion('WireViz.java', diagramLibraryVersions.wireviz)
+  await updateServiceGetVersion('Wireviz.java', diagramLibraryVersions.wireviz)
   await updateVegaServiceGetVersion(diagramLibraryVersions.vega, diagramLibraryVersions.vegalite)
 
 } catch (err) {

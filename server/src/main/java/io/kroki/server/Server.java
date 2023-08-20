@@ -8,6 +8,7 @@ import io.kroki.server.service.Blockdiag;
 import io.kroki.server.service.Bpmn;
 import io.kroki.server.service.Bytefield;
 import io.kroki.server.service.D2;
+import io.kroki.server.service.TikZ;
 import io.kroki.server.service.Dbml;
 import io.kroki.server.service.DiagramRegistry;
 import io.kroki.server.service.DiagramRest;
@@ -25,6 +26,7 @@ import io.kroki.server.service.Plantuml;
 import io.kroki.server.service.ServiceVersion;
 import io.kroki.server.service.Structurizr;
 import io.kroki.server.service.Svgbob;
+import io.kroki.server.service.Symbolator;
 import io.kroki.server.service.Umlet;
 import io.kroki.server.service.Vega;
 import io.kroki.server.service.Wavedrom;
@@ -47,10 +49,10 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,19 +92,29 @@ public class Server extends AbstractVerticle {
     BodyHandler bodyHandler = BodyHandler.create(false).setBodyLimit(config.getLong("KROKI_BODY_LIMIT", BodyHandler.DEFAULT_BODY_LIMIT));
 
     // CORS
-    Set<String> allowedHeaders = new HashSet<>();
+    // CORS Headers
+    Set<String> allowedHeaders = new LinkedHashSet<>();
     allowedHeaders.add("Access-Control-Allow-Origin");
     allowedHeaders.add("Origin");
     allowedHeaders.add("Content-Type");
     allowedHeaders.add("Accept");
+    // Set additional Headers provided by config/environment variable
+    String envHeadersVar = config.getString("KROKI_CORS_ALLOWED_HEADERS");
+    if (envHeadersVar != null) {
+      allowedHeaders.addAll(
+        Arrays.stream(envHeadersVar.split(","))
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .collect(Collectors.toList())
+      );
+    }
+    // CORS Methods
     Set<HttpMethod> allowedMethods = new HashSet<>();
     allowedMethods.add(HttpMethod.GET);
     allowedMethods.add(HttpMethod.POST);
     allowedMethods.add(HttpMethod.OPTIONS);
-    // REMIND: In order to accept requests with `Origin: null` header, we are using the value ".*" instead of "*".
-    // This can be reverted back to "*" once https://github.com/vert-x3/vertx-web/issues/1933 is fixed.
-    // Reference: https://github.com/yuzutech/kroki/pull/711
-    router.route().handler(CorsHandler.create(".*")
+    router.route().handler(CorsHandler.create()
+      .addOrigin("*")
       .allowedHeaders(allowedHeaders)
       .allowedMethods(allowedMethods));
 
@@ -110,12 +122,13 @@ public class Server extends AbstractVerticle {
     DiagramRegistry registry = new DiagramRegistry(router, bodyHandler);
     registry.register(new Plantuml(vertx, config), "plantuml");
     registry.register(new Plantuml(vertx, config), "c4plantuml");
-    registry.register(new Ditaa(vertx), "ditaa");
-    registry.register(new Blockdiag(vertx, config), "blockdiag", "seqdiag", "actdiag", "nwdiag", "packetdiag", "rackdiag");
-    registry.register(new Umlet(vertx), "umlet");
+    registry.register(new Ditaa(vertx, config), "ditaa");
+    registry.register(new Blockdiag(vertx, config, commander), "blockdiag", "seqdiag", "actdiag", "nwdiag", "packetdiag", "rackdiag");
+    registry.register(new Umlet(vertx, config, commander), "umlet");
     registry.register(new Graphviz(vertx, config, commander), "graphviz", "dot");
     registry.register(new Erd(vertx, config, commander), "erd");
     registry.register(new Svgbob(vertx, config, commander), "svgbob");
+    registry.register(new Symbolator(vertx, config), "symbolator");
     registry.register(new Nomnoml(vertx, config, commander), "nomnoml");
     registry.register(new Mermaid(vertx, config), "mermaid");
     registry.register(new Vega(vertx, config, Vega.SpecFormat.DEFAULT, commander), "vega");
@@ -125,9 +138,10 @@ public class Server extends AbstractVerticle {
     registry.register(new Bytefield(vertx, config, commander), "bytefield");
     registry.register(new Excalidraw(vertx, config), "excalidraw");
     registry.register(new Pikchr(vertx, config, commander), "pikchr");
-    registry.register(new Structurizr(vertx), "structurizr");
+    registry.register(new Structurizr(vertx, config), "structurizr");
     registry.register(new Diagramsnet(vertx, config), "diagramsnet");
     registry.register(new D2(vertx, config, commander), "d2");
+    registry.register(new TikZ(vertx, config, commander), "tikz");
     registry.register(new Dbml(vertx, config, commander), "dbml");
     registry.register(new Wireviz(vertx, config), "wireviz");
 
@@ -155,7 +169,7 @@ public class Server extends AbstractVerticle {
     // Default route
     Route route = router.route("/*");
     route.handler(routingContext -> routingContext.fail(404));
-    ErrorHandler errorHandler = new ErrorHandler(vertx, false);
+    ErrorHandler errorHandler = new ErrorHandler(vertx, config.getBoolean("KROKI_DISPLAY_EXCEPTION_DETAILS", false));
     route.failureHandler(errorHandler);
 
     server
@@ -166,16 +180,34 @@ public class Server extends AbstractVerticle {
 
   private static void setPemKeyCertOptions(JsonObject config, HttpServerOptions serverOptions, boolean enableSSL) {
     if (enableSSL) {
+      PemKeyCertOptions certOptions = new PemKeyCertOptions();
       Optional<String> sslKeyValue = Optional.ofNullable(config.getString("KROKI_SSL_KEY"));
+      Optional<String> sslKeyPath = Optional.ofNullable(config.getString("KROKI_SSL_KEY_PATH"));
       Optional<String> sslCertValue = Optional.ofNullable(config.getString("KROKI_SSL_CERT"));
-      if (sslKeyValue.isEmpty() || sslCertValue.isEmpty()) {
-        throw new IllegalArgumentException("KROKI_SSL_KEY and KROKI_SSL_CERT must be configured when SSL is enabled.");
+      Optional<String> sslCertPath = Optional.ofNullable(config.getString("KROKI_SSL_CERT_PATH"));
+
+      if (sslKeyValue.isEmpty() && sslKeyPath.isEmpty()) {
+        throw new IllegalArgumentException("KROKI_SSL_KEY or KROKI_SSL_KEY_PATH must be configured when SSL is enabled.");
       }
-      serverOptions.setPemKeyCertOptions(
-        new PemKeyCertOptions()
-          .addKeyValue(Buffer.buffer(sslKeyValue.get()))
-          .addCertValue(Buffer.buffer(sslCertValue.get()))
-      );
+      if (sslCertValue.isEmpty() && sslCertPath.isEmpty()) {
+        throw new IllegalArgumentException("KROKI_SSL_CERT or KROKI_SSL_CERT_PATH must be configured when SSL is enabled.");
+      }
+
+      if (sslKeyValue.isPresent()) {
+        certOptions.addKeyValue(Buffer.buffer(config.getString("KROKI_SSL_KEY")));
+      }
+      else {
+        certOptions.addKeyPath(config.getString("KROKI_SSL_KEY_PATH"));
+      }
+
+      if (sslCertValue.isPresent()) {
+        certOptions.addCertValue(Buffer.buffer(config.getString("KROKI_SSL_CERT")));
+      }
+      else {
+        certOptions.addCertPath(config.getString("KROKI_SSL_CERT_PATH"));
+      }
+
+      serverOptions.setPemKeyCertOptions(certOptions);
     }
   }
 

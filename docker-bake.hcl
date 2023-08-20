@@ -2,8 +2,8 @@ variable "TAG" {
   default = "latest"
 }
 
-group "default" {
-  targets = ["kroki", "kroki-blockdiag", "kroki-mermaid", "kroki-bpmn", "kroki-excalidraw", "kroki-diagramsnet", "kroki-wireviz"]
+group "companion-images" {
+  targets = ["kroki-mermaid", "kroki-bpmn", "kroki-excalidraw", "kroki-diagramsnet", "kroki-wireviz"]
 }
 
 target "kroki" {
@@ -14,14 +14,11 @@ target "kroki" {
     dbml = "./dbml"
     wavedrom = "./wavedrom"
     bytefield = "./bytefield"
+    tikz = "./tikz"
+    kroki-src = "."
   }
-  dockerfile = "ops/docker/jdk11-alpine/Dockerfile"
+  dockerfile = "ops/docker/jdk11-jammy/Dockerfile"
   tags = ["yuzutech/kroki:${TAG}"]
-}
-
-target "kroki-blockdiag" {
-  context = "blockdiag"
-  tags = ["yuzutech/kroki-blockdiag:${TAG}"]
 }
 
 target "kroki-mermaid" {

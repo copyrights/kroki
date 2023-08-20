@@ -14,15 +14,50 @@ import org.owasp.html.HtmlPolicyBuilder;
 import org.owasp.html.PolicyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.AbstractMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 public class ErrorHandler implements io.vertx.ext.web.handler.ErrorHandler {
 
+  private static final Map<Integer, String> statusMessageMap = Map.ofEntries(
+    new AbstractMap.SimpleEntry<>(400, "Bad Request"),
+    new AbstractMap.SimpleEntry<>(401, "Unauthorized"),
+    new AbstractMap.SimpleEntry<>(402, "Payment Required"),
+    new AbstractMap.SimpleEntry<>(403, "Forbidden"),
+    new AbstractMap.SimpleEntry<>(404, "Not Found"),
+    new AbstractMap.SimpleEntry<>(405, "Method Not Allowed"),
+    new AbstractMap.SimpleEntry<>(406, "Not Acceptable"),
+    new AbstractMap.SimpleEntry<>(407, "Proxy Authentication Required"),
+    new AbstractMap.SimpleEntry<>(408, "Request Timeout"),
+    new AbstractMap.SimpleEntry<>(409, "Conflict"),
+    new AbstractMap.SimpleEntry<>(410, "Gone"),
+    new AbstractMap.SimpleEntry<>(411, "Length Required"),
+    new AbstractMap.SimpleEntry<>(412, "Precondition Failed"),
+    new AbstractMap.SimpleEntry<>(413, "Content Too Large"),
+    new AbstractMap.SimpleEntry<>(414, "URI Too Long"),
+    new AbstractMap.SimpleEntry<>(415, "Unsupported Media Type"),
+    new AbstractMap.SimpleEntry<>(416, "Range Not Satisfiable"),
+    new AbstractMap.SimpleEntry<>(417, "Expectation Failed"),
+    new AbstractMap.SimpleEntry<>(418, "I'm a teapot"),
+    new AbstractMap.SimpleEntry<>(421, "Misdirected Request"),
+    new AbstractMap.SimpleEntry<>(422, "Unprocessable Content"),
+    new AbstractMap.SimpleEntry<>(423, "Locked"),
+    new AbstractMap.SimpleEntry<>(424, "Failed Dependency"),
+    new AbstractMap.SimpleEntry<>(425, "Too Early"),
+    new AbstractMap.SimpleEntry<>(426, "Upgrade Required"),
+    new AbstractMap.SimpleEntry<>(428, "Precondition Required"),
+    new AbstractMap.SimpleEntry<>(429, "Too Many Requests"),
+    new AbstractMap.SimpleEntry<>(431, "Request Header Fields Too Large"),
+    new AbstractMap.SimpleEntry<>(451, "Unavailable For Legal Reasons")
+  );
   private static final Logger logger = LoggerFactory.getLogger(ErrorHandler.class);
   private final Logging logging;
 
@@ -52,41 +87,42 @@ public class ErrorHandler implements io.vertx.ext.web.handler.ErrorHandler {
 
   @Override
   public void handle(RoutingContext context) {
-    HttpServerResponse response = context.response();
     Throwable failure = context.failure();
     int errorCode = context.statusCode();
-    String errorMessage = response.getStatusMessage();
-    String statusMessage = null;
+    final String errorMessage;
+    final String statusMessage;
     String htmlErrorMessage = null;
-    if (failure instanceof BadRequestException) {
-      errorCode = 400;
+    if (errorCode == 404) {
+      statusMessage = "Not Found";
+      errorMessage = statusMessage;
+    } else if (failure instanceof BadRequestException || failure instanceof IllegalStateException) {
+      if (errorCode < 400 || errorCode >= 500) {
+        errorCode = 400;
+        statusMessage = "Bad Request";
+      } else {
+        statusMessage = statusMessageMap.getOrDefault(errorCode, "Bad Request");
+      }
       errorMessage = failure.getMessage();
-      statusMessage = "Bad Request";
-      htmlErrorMessage = ((BadRequestException) failure).getMessageHTML();
+      if (failure instanceof BadRequestException) {
+        htmlErrorMessage = ((BadRequestException) failure).getMessageHTML();
+      }
     } else if (failure instanceof ServiceUnavailableException) {
       errorCode = 503;
       errorMessage = failure.getMessage();
       statusMessage = "Service Unavailable";
       htmlErrorMessage = ((ServiceUnavailableException) failure).getMessageHTML();
-    } else if (failure instanceof IllegalStateException) {
-      errorCode = 500;
-      errorMessage = failure.getMessage();
-      if (errorMessage == null) {
-        errorMessage = "Internal Server Error";
-      }
     } else {
-      if (errorCode < 400 || errorCode > 500) {
+      if (errorCode < 400 || errorCode > 599) {
+        // unexpected error code!
+        logger.warn("Unexpected error code in ErrorHandler. Got: " + errorCode + ". Error code must be within 400 and 599, fallback to 500");
         errorCode = 500;
       }
       if (displayExceptionDetails) {
-        errorMessage = failure.getMessage();
-      }
-      if (errorMessage == null || errorMessage.trim().isEmpty()) {
+        errorMessage = Objects.requireNonNullElse(failure.getMessage(), "Internal Server Error");
+      } else {
         errorMessage = "Internal Server Error";
       }
-    }
-    if (statusMessage == null) {
-      statusMessage = errorMessage;
+      statusMessage = "Internal Server Error";
     }
     handleError(new ErrorContext(context.request(), context.response(), statusMessage, new ErrorInfo(context.failure(), errorCode, errorMessage, htmlErrorMessage)));
   }
@@ -94,8 +130,10 @@ public class ErrorHandler implements io.vertx.ext.web.handler.ErrorHandler {
   public void handleError(ErrorContext errorContext) {
     HttpServerResponse response = errorContext.getResponse();
     response.setStatusMessage(errorContext.getStatusMessage());
-    logging.error(errorContext.getRequest(), errorContext.getErrorInfo());
-    response.setStatusCode(errorContext.getErrorCode());
+    int errorCode = errorContext.getErrorCode();
+    Level level = (errorCode >= 400 && errorCode <= 499) ? Level.WARN : Level.ERROR;
+    logging.log(level, errorContext.getRequest(), errorContext.getErrorInfo());
+    response.setStatusCode(errorCode);
     ErrorInfo errorInfo = errorContext.getErrorInfo();
     if (!sendErrorResponseMIME(response, errorInfo) && !sendErrorAcceptMIME(response, errorContext.getAcceptableMimes(), errorInfo)) {
       // fallback plain/text
@@ -128,7 +166,9 @@ public class ErrorHandler implements io.vertx.ext.web.handler.ErrorHandler {
       StringBuilder stack = new StringBuilder();
       if (failure != null && displayExceptionDetails) {
         for (StackTraceElement elem : failure.getStackTrace()) {
-          stack.append(htmlSanitizer.sanitize("<li>" + elem.toString() + "</li>"));
+          stack.append("<li>");
+          stack.append(htmlSanitizer.sanitize(elem.toString()));
+          stack.append("</li>");
         }
       }
       response.putHeader(HttpHeaders.CONTENT_TYPE, "text/html");
@@ -179,7 +219,7 @@ public class ErrorHandler implements io.vertx.ext.web.handler.ErrorHandler {
 
     if (mime.startsWith("image/png") || mime.startsWith("image/*")) {
       String completeErrorMessage = getCompleteErrorMessage(failure, errorCode, errorMessage);
-      try ( ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
         BufferedImage bufferedImage = ErrorImage.buildPNGImage(completeErrorMessage);
         ImageIO.write(bufferedImage, "png", output);
         response.putHeader(HttpHeaders.CONTENT_TYPE, "image/png");
